@@ -1,22 +1,21 @@
 /**
- * PM2 配置文件
- * 使用 tsx 直接运行 TypeScript，无需编译
+ * PM2 production config — run TypeScript via tsx
  */
 module.exports = {
     apps: [
         {
             name: 'wrapserver',
-            script: 'pnpm',
-            args: 'dev',
-            cwd: './',
+            script: 'node_modules/tsx/dist/cli.mjs',
+            args: 'src/index.ts',
+            cwd: '/opt/WrapServer',
             instances: 1,
+            exec_mode: 'fork',
             autorestart: true,
-            watch: true,
+            watch: false,
             max_memory_restart: '512M',
             env: {
                 NODE_ENV: 'production',
             },
-            // 日志配置
             log_date_format: 'YYYY-MM-DD HH:mm:ss',
             error_file: './logs/error.log',
             out_file: './logs/output.log',

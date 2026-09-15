@@ -114,6 +114,7 @@ POST /api/cardkeys/batch
 GET    /api/templates          - 获取所有模板
 GET    /api/templates/:id      - 获取单个模板
 POST   /api/templates          - 创建模板
+PUT    /api/templates/:id      - 更新模板（覆盖 HTML 文件，可选改名）
 DELETE /api/templates/:id      - 删除模板
 ```
 

@@ -209,13 +209,14 @@ export async function initDatabase() {
             ['卡密删除', 'cardkey:delete', 'button', 13],
             ['模板管理', 'template', 'menu', null],
             ['模板新增', 'template:add', 'button', 17],
+            ['模板更新', 'template:update', 'button', 17],
             ['模板删除', 'template:delete', 'button', 17],
             ['模板预览', 'template:preview', 'button', 17],
             ['角色管理', 'role', 'menu', null],
-            ['角色新增', 'role:add', 'button', 21],
-            ['角色编辑', 'role:edit', 'button', 21],
-            ['角色删除', 'role:delete', 'button', 21],
-            ['权限配置', 'role:config', 'button', 21],
+            ['角色新增', 'role:add', 'button', 22],
+            ['角色编辑', 'role:edit', 'button', 22],
+            ['角色删除', 'role:delete', 'button', 22],
+            ['权限配置', 'role:config', 'button', 22],
         ]
 
         for (const perm of defaultPermissions) {
@@ -224,6 +225,45 @@ export async function initDatabase() {
                 perm,
             )
         }
+    }
+
+    // Ensure template:update exists for DBs created before this permission was added
+    const updatePerm = database.exec(
+        "SELECT id FROM permissions WHERE code = 'template:update'",
+    )
+    if (updatePerm.length === 0 || updatePerm[0].values.length === 0) {
+        const parent = database.exec(
+            "SELECT id FROM permissions WHERE code = 'template'",
+        )
+        const parentId =
+            parent.length > 0 && parent[0].values.length > 0
+                ? (parent[0].values[0][0] as number)
+                : null
+        database.run(
+            'INSERT INTO permissions (name, code, type, parent_id) VALUES (?, ?, ?, ?)',
+            ['模板更新', 'template:update', 'button', parentId],
+        )
+
+        // Grant to 超级管理员 role if present
+        const roles = database.exec(
+            "SELECT id, permissions FROM roles WHERE name = '超级管理员'",
+        )
+        if (roles.length > 0 && roles[0].values.length > 0) {
+            const roleId = roles[0].values[0][0]
+            try {
+                const perms = JSON.parse(roles[0].values[0][1] as string) as string[]
+                if (!perms.includes('template:update')) {
+                    perms.push('template:update')
+                    database.run('UPDATE roles SET permissions = ? WHERE id = ?', [
+                        JSON.stringify(perms),
+                        roleId,
+                    ])
+                }
+            } catch (_) {
+                // ignore malformed permissions JSON
+            }
+        }
+        saveDb()
     }
 
     // Insert default roles if not exists

@@ -101,6 +101,43 @@ templates.post('/', async (c) => {
     return c.json({ message: '创建成功', id })
 })
 
+// Update template (replace HTML file, optionally rename)
+templates.put('/:id', async (c) => {
+    const id = c.req.param('id')
+    const body = await c.req.json()
+    const { name, htmlContent } = body
+
+    if (!htmlContent) {
+        return c.json({ error: '请上传HTML文件' }, 400)
+    }
+
+    const db = await getDb()
+    const existing = db.exec(
+        'SELECT id, name, file_name FROM templates WHERE id = ?',
+        [id],
+    )
+    if (existing.length === 0 || existing[0].values.length === 0) {
+        return c.json({ error: '模板不存在' }, 404)
+    }
+
+    const oldName = existing[0].values[0][1] as string
+    const fileName = existing[0].values[0][2] as string
+    const filePath = join(templateDir, fileName)
+
+    // Overwrite the same file so template id / preview links stay stable
+    writeFileSync(filePath, htmlContent, 'utf-8')
+
+    const newName = typeof name === 'string' && name.trim() ? name.trim() : oldName
+    db.run('UPDATE templates SET name = ?, html_content = ? WHERE id = ?', [
+        newName,
+        fileName,
+        id,
+    ])
+    saveDb()
+
+    return c.json({ message: '更新成功' })
+})
+
 // Delete template
 templates.delete('/:id', async (c) => {
     const id = c.req.param('id')

@@ -231,14 +231,51 @@
                 iframe.src = projectUrl
                 overlay.style.display = 'none'
                 content.style.display = 'block'
+                startAuthWatch()
             }
 
             // Show auth form (default state)
-            function showAuthForm() {
+            function showAuthForm(message) {
+                stopAuthWatch()
                 overlay.style.display = 'flex'
                 content.style.display = 'none'
                 btn.disabled = false
                 btn.textContent = '验 证'
+                if (message) errorMsg.textContent = message
+            }
+
+            // Kick user out when card key becomes invalid while page stays open
+            function kickOut(message) {
+                clearAuth()
+                iframe.src = ''
+                showAuthForm(message || '卡密已失效，请重新验证')
+            }
+
+            let authWatchTimer = null
+            const AUTH_CHECK_INTERVAL_MS = 15000
+
+            function stopAuthWatch() {
+                if (authWatchTimer) {
+                    clearInterval(authWatchTimer)
+                    authWatchTimer = null
+                }
+            }
+
+            async function revalidateAuth() {
+                // Local expire first (no network needed)
+                if (!getLocalAuth()) {
+                    kickOut('卡密已过期，请重新验证')
+                    return
+                }
+                const isValid = await serverCheckAuth()
+                if (!isValid) {
+                    kickOut('卡密已失效，请重新验证')
+                }
+            }
+
+            function startAuthWatch() {
+                stopAuthWatch()
+                authWatchTimer = setInterval(revalidateAuth, AUTH_CHECK_INTERVAL_MS)
             }
 
             // On load: check saved auth + server revalidate
@@ -250,10 +287,7 @@
 
                     const isValid = await serverCheckAuth()
                     if (!isValid) {
-                        // Server says binding is gone — kick back to auth form
-                        clearAuth()
-                        iframe.src = ''
-                        showAuthForm()
+                        kickOut('卡密已失效，请重新验证')
                     }
                 } else {
                     showAuthForm()

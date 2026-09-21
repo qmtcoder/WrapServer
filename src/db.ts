@@ -1,9 +1,56 @@
-import initSqlJs, { Database } from 'sql.js'
-import { readFileSync, writeFileSync, existsSync } from 'fs'
+import Database from 'better-sqlite3'
 import { join } from 'path'
 import bcrypt from 'bcryptjs'
 
 const dbPath = join(process.cwd(), 'data.db')
+
+type SqlValue = string | number | bigint | null | Uint8Array
+
+export type QueryExecResult = {
+    columns: string[]
+    values: SqlValue[][]
+}
+
+/**
+ * sql.js-compatible wrapper over better-sqlite3 so existing route code
+ * can keep using db.exec / db.run without a full rewrite.
+ */
+export class CompatDatabase {
+    private readonly db: Database.Database
+
+    constructor(filename: string) {
+        this.db = new Database(filename)
+        this.db.pragma('journal_mode = WAL')
+        this.db.pragma('foreign_keys = ON')
+        this.db.pragma('busy_timeout = 5000')
+    }
+
+    run(sql: string, params: SqlValue[] = []): void {
+        this.db.prepare(sql).run(...params)
+    }
+
+    exec(sql: string, params: SqlValue[] = []): QueryExecResult[] {
+        const stmt = this.db.prepare(sql)
+
+        if (!stmt.reader) {
+            stmt.run(...params)
+            return []
+        }
+
+        const columns = stmt.columns().map((c) => c.name)
+        const rows = stmt.raw(true).all(...params) as SqlValue[][]
+
+        if (rows.length === 0) {
+            return []
+        }
+
+        return [{ columns, values: rows }]
+    }
+
+    close(): void {
+        this.db.close()
+    }
+}
 
 /**
  * 获取当前上海时区时间字符串，格式：YYYY-MM-DD HH:mm:ss
@@ -17,28 +64,18 @@ export function getShanghaiTime(): string {
     return shanghaiStr
 }
 
-let db: Database
+let db: CompatDatabase
 
-export async function getDb(): Promise<Database> {
+export async function getDb(): Promise<CompatDatabase> {
     if (!db) {
-        const SQL = await initSqlJs()
-
-        if (existsSync(dbPath)) {
-            const buffer = readFileSync(dbPath)
-            db = new SQL.Database(buffer)
-        } else {
-            db = new SQL.Database()
-        }
+        db = new CompatDatabase(dbPath)
     }
     return db
 }
 
+/** No-op: better-sqlite3 writes to disk immediately (WAL). */
 export function saveDb() {
-    if (db) {
-        const data = db.export()
-        const buffer = Buffer.from(data)
-        writeFileSync(dbPath, buffer)
-    }
+    // intentionally empty
 }
 
 export async function initDatabase() {
@@ -222,7 +259,7 @@ export async function initDatabase() {
         for (const perm of defaultPermissions) {
             database.run(
                 'INSERT INTO permissions (name, code, type, parent_id) VALUES (?, ?, ?, ?)',
-                perm,
+                perm as SqlValue[],
             )
         }
     }
@@ -251,13 +288,15 @@ export async function initDatabase() {
         if (roles.length > 0 && roles[0].values.length > 0) {
             const roleId = roles[0].values[0][0]
             try {
-                const perms = JSON.parse(roles[0].values[0][1] as string) as string[]
+                const perms = JSON.parse(
+                    roles[0].values[0][1] as string,
+                ) as string[]
                 if (!perms.includes('template:update')) {
                     perms.push('template:update')
-                    database.run('UPDATE roles SET permissions = ? WHERE id = ?', [
-                        JSON.stringify(perms),
-                        roleId,
-                    ])
+                    database.run(
+                        'UPDATE roles SET permissions = ? WHERE id = ?',
+                        [JSON.stringify(perms), roleId],
+                    )
                 }
             } catch (_) {
                 // ignore malformed permissions JSON

@@ -6,7 +6,7 @@
 
 - **框架**: Hono
 - **语言**: TypeScript
-- **数据库**: SQLite (sql.js)
+- **数据库**: SQLite (better-sqlite3)
 - **认证**: JWT (hono/jwt)
 - **密码加密**: bcryptjs
 - **运行时**: @hono/node-server

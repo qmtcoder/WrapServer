@@ -161,6 +161,6 @@ GET /api/dashboard/stats - 获取统计数据
 
 - **框架**: Hono
 - **语言**: TypeScript
-- **数据库**: SQLite (sql.js)
+- **数据库**: SQLite (better-sqlite3)
 - **认证**: JWT
 - **密码加密**: bcryptjs

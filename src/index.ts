@@ -239,10 +239,28 @@ app.get('/api/cardkeys/check', async (c) => {
     const { getDb } = await import('./db')
     const db = await getDb()
 
-    // Find card key bound to this device for this project
+    // Check project status
+    const projResult = db.exec('SELECT status FROM projects WHERE id = ?', [
+        projectId,
+    ])
+    if (projResult.length > 0 && projResult[0].values.length > 0) {
+        if ((projResult[0].values[0][0] as string) === 'disabled') {
+            return c.json({ valid: false })
+        }
+    }
+
+    // Only still-valid bindings: used, not disabled, not expired.
+    // If this device has both an expired temp key and a later permanent key,
+    // ignore the expired one and keep the latest valid card.
+    const now = getShanghaiTime()
     const result = db.exec(
-        'SELECT * FROM card_keys WHERE project_id = ? AND device_id = ? LIMIT 1',
-        [projectId, deviceId],
+        `SELECT * FROM card_keys
+         WHERE project_id = ? AND device_id = ? AND status = 'used'
+           AND (expire_at IS NULL OR expire_at = '' OR expire_at > ?)
+         ORDER BY CASE WHEN used_at IS NULL OR used_at = '' THEN 0 ELSE 1 END DESC,
+                  used_at DESC, id DESC
+         LIMIT 1`,
+        [projectId, deviceId, now],
     )
     if (result.length === 0 || result[0].values.length === 0) {
         return c.json({ valid: false })
@@ -254,29 +272,6 @@ app.get('/api/cardkeys/check', async (c) => {
     columns.forEach((col: string, i: number) => {
         cardKey[col] = values[i]
     })
-
-    // Check project status
-    const projResult = db.exec('SELECT status FROM projects WHERE id = ?', [
-        projectId,
-    ])
-    if (projResult.length > 0 && projResult[0].values.length > 0) {
-        if ((projResult[0].values[0][0] as string) === 'disabled') {
-            return c.json({ valid: false })
-        }
-    }
-
-    // Card must be used status (unused means unbound)
-    if (cardKey.status !== 'used') {
-        return c.json({ valid: false })
-    }
-
-    // Check expiry
-    if (cardKey.expire_at) {
-        const expireDate = new Date(cardKey.expire_at)
-        if (expireDate < new Date()) {
-            return c.json({ valid: false })
-        }
-    }
 
     return c.json({ valid: true, expireAt: cardKey.expire_at || null })
 })
